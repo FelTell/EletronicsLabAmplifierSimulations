@@ -87,6 +87,34 @@ def GetOutputRes(symbol, ad, beta) -> tuple[float, float]:
     outputResOpen = outputResClosed * (1 + ad * beta)
     return abs(outputResClosed), abs(outputResOpen)
 
+def GetSlewRateAndSaturation(symbol) -> tuple[float, float, float]:
+    rr = RunLtSpiceSimulation("Sims/6_SlewRateSat.asc", symbol)[0]
+    vout = rr.get_trace("v(OUT)")
+    time = rr.get_trace("time")
+    # Get saturation voltages from the middle point of the square wave
+    idxSatPos = abs(time.data - 125e-06).argmin()
+    idxSatNeg = abs(time.data - 375e-06).argmin()
+    vSatPos = vout.data[idxSatPos]
+    vSatNeg = vout.data[idxSatNeg]
+    # Get start value by finding the first point where the signal crosses 90% 
+    # of the negative saturation voltage
+    idxStartSR = 0
+    idxEndSR = 0  
+    for i, v in enumerate(vout.data):
+        if v >= vSatNeg * 0.9:
+            idxStartSR = i
+            break
+    # Get end value by finding the last point before the signal crosses 90%
+    # of the positive saturation voltage
+    for i, v in enumerate(vout.data):
+        idxEndSR = i
+        if v >= vSatPos * 0.9:
+            break
+    delta_v = vout.data[idxEndSR] - vout.data[idxStartSR]
+    delta_t = time.data[idxEndSR] - time.data[idxStartSR]
+    slew_rate = (delta_v / delta_t) * 1e-06
+    return slew_rate, vSatPos, vSatNeg
+
 
 def GetResults(symbol):
     print(f"Running simulation for symbol: {symbol}")
@@ -96,6 +124,7 @@ def GetResults(symbol):
     psrrPos = GetPsrrPos(symbol)
     psrrNeg = GetPsrrNeg(symbol)
     outputResClosed, outputResOpen = GetOutputRes(symbol, ad, beta)
+    slewRate, vSatPos, vSatNeg = GetSlewRateAndSaturation(symbol)
 
     print(f"    Ganho em malha aberta = {EngNumber(ad)}V/V")
     print(f"    Tensão de Offset = {EngNumber(offset)}V")
@@ -110,6 +139,9 @@ def GetResults(symbol):
         f"    Resistência de saída malha fechada = {EngNumber(outputResClosed)}Ω")
     print(
         f"    Resistência de saída malha aberta = {EngNumber(outputResOpen)}Ω")
+    print(f"    Slew Rate = {slewRate}V/μs")
+    print(f"    Tensão de Saturação (Positiva) = {vSatPos}V")
+    print(f"    Tensão de Saturação (Negativa) = {vSatNeg}V")
     print("")
 
 
