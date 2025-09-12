@@ -19,13 +19,14 @@ def RunLtSpiceSimulation(ascPath, symbol) -> tuple[RawRead, str]:
     return RawRead(rawFile), logFile
 
 
-def GetAdAndDiffInputRes(symbol) -> tuple[float, float, float, float, float]:
+def GetAdAndDiffInputRes(symbol) -> tuple[float, float, float, float, float, float]:
     rr = RunLtSpiceSimulation("Sims/0_Ad.asc", symbol)[0]
     asc = AscEditor("Sims/0_Ad.asc")
     vout = rr.get_trace("v(OUT)")
     vinNeg = rr.get_trace("v(In-)")
     vinPos = rr.get_trace("v(In+)")
-    vData =  abs(vout.data / (vinNeg.data - vinPos.data))
+    vDataOpen = abs(vout.data / (vinNeg.data - vinPos.data))
+    vDataClosed = abs(vout.data / (vinPos.data))
     iin = rr.get_trace("Ix(x1:in-)")
     freq = rr.get_trace("frequency")
     idx = abs(freq.data - 1000).argmin()
@@ -33,22 +34,30 @@ def GetAdAndDiffInputRes(symbol) -> tuple[float, float, float, float, float]:
     R3 = asc.get_component_floatvalue("R3")
 
     beta = R2 / (R2 + R3)
-    gain = vData[idx]
+    gainOpen = vDataOpen[idx]
     diffInputResClosed = vinNeg.data[idx] / iin.data[idx]
-    diffInputResOpen = diffInputResClosed / (1 + gain * beta)
+    diffInputResOpen = diffInputResClosed / (1 + gainOpen * beta)
 
-    idxMaxVout = numpy.argmax(vData)
-    maxVout = vData[idxMaxVout]
-    voutdb = 20 * numpy.log10(maxVout) - 3
-    voutBw = 10 ** (voutdb / 20)
+    gainOpen3db = 20 * numpy.log10(gainOpen) - 3
+    voutBw = 10 ** (gainOpen3db / 20)
     idx3db = 0
-    for i in range(idxMaxVout, len(vData)):
-        if vData[i] <= voutBw:
+    for i in range(len(vDataOpen)):
+        if vDataOpen[i] <= voutBw:
             idx3db = i
             break
     bwOpen = freq.data[idx3db]
 
-    return abs(gain), abs(diffInputResClosed), abs(diffInputResOpen), beta, abs(bwOpen)
+    gainClosed = vDataClosed[idx]
+    gainClosed3db = 20 * numpy.log10(gainClosed) - 3
+    voutClosedBw = 10 ** (gainClosed3db / 20)
+    idx3dbClosed = 0
+    for i in range(len(vDataClosed)):
+        if vDataClosed[i] <= voutClosedBw:
+            idx3dbClosed = i
+            break
+    bwClosed = freq.data[idx3dbClosed]
+
+    return abs(gainOpen), abs(diffInputResClosed), abs(diffInputResOpen), beta, abs(bwOpen), abs(bwClosed)
 
 
 def GetOffsetAndThd(symbol) -> tuple[float, float]:
@@ -128,47 +137,38 @@ def GetSlewRateAndSaturation(symbol) -> tuple[float, float, float]:
     deltaV = vout.data[idxEndSR] - vout.data[idxStartSR]
     deltaT = time.data[idxEndSR] - time.data[idxStartSR]
     slewRate = (deltaV / deltaT) * 1e-06
-    return abs(slewRate), abs(float(vSatPos)), abs(float(vSatNeg))
+    return abs(slewRate), abs(float(vSatPos)), float(vSatNeg)
 
 
-def GetClosedLoopGain(symbol, ad) -> tuple[float, float]:
+def GetClosedLoopGain(symbol, ad) -> float:
     rr = RunLtSpiceSimulation("Sims/7_GanhoFechada.asc", symbol)[0]
     asc = AscEditor("Sims/0_Ad.asc")
     R2 = asc.get_component_floatvalue("R2")
     R3 = asc.get_component_floatvalue("R3")
     vout = rr.get_trace("v(OUT)")
+    vinNeg = rr.get_trace("v(In-)")
     freq = rr.get_trace("frequency")
     idx = abs(freq.data - 1000).argmin()
     acmmf = vout.data[idx]
 
-    cmmr = (2*(1+ad*R2)*acmmf)/(2*R3+R2*acmmf)
+    cmmr_linear = (2*(1+ad*R2)*acmmf)/(2*R3+R2*acmmf)
+    cmmr_db = 20 * numpy.log10(cmmr_linear)
 
-    idxMaxVout = numpy.argmax(abs(vout.data))
-    maxVout = abs(vout.data[idxMaxVout])
-    voutdb = 20 * numpy.log10(maxVout) - 3
-    voutBw = 10 ** (voutdb / 20)
-    idx3db = 0
-    for i in range(idxMaxVout, len(vout.data)):
-        if abs(vout.data[i]) <= voutBw:
-            idx3db = i
-            break
-    bwClosed = freq.data[idx3db]
-
-    return abs(cmmr), abs(bwClosed)
+    return abs(cmmr_db)
 
 
 def GetResults(symbol):
     print(f"Running simulation for symbol: {symbol}")
-    ad, diffInputResClosed, diffInputResOpen, beta, bwOpen = GetAdAndDiffInputRes(
+    ad, diffInputResClosed, diffInputResOpen, beta, bwOpen, bwClosed = GetAdAndDiffInputRes(
         symbol)
     offset, thd = GetOffsetAndThd(symbol)
     psrrPos = GetPsrrPos(symbol)
     psrrNeg = GetPsrrNeg(symbol)
     outputResClosed, outputResOpen = GetOutputRes(symbol, ad, beta)
     slewRate, vSatPos, vSatNeg = GetSlewRateAndSaturation(symbol)
-    cmmr, bwClosed = GetClosedLoopGain(symbol, ad)
+    cmmr = GetClosedLoopGain(symbol, ad)
 
-    print(f"    CMRR = {EngNumber(cmmr)}V/V")
+    print(f"    CMRR = {EngNumber(cmmr)}dB")
     print(f"    PSRR (Positivo) = {EngNumber(psrrPos)}dB")
     print(f"    PSRR (Negativo) = {EngNumber(psrrNeg)}dB")
     print(f"    Ganho em malha aberta = {EngNumber(ad)}V/V")
