@@ -87,6 +87,7 @@ def GetOutputRes(symbol, ad, beta) -> tuple[float, float]:
     outputResOpen = outputResClosed * (1 + ad * beta)
     return abs(outputResClosed), abs(outputResOpen)
 
+
 def GetSlewRateAndSaturation(symbol) -> tuple[float, float, float]:
     rr = RunLtSpiceSimulation("Sims/6_SlewRateSat.asc", symbol)[0]
     vout = rr.get_trace("v(OUT)")
@@ -96,10 +97,10 @@ def GetSlewRateAndSaturation(symbol) -> tuple[float, float, float]:
     idxSatNeg = abs(time.data - 375e-06).argmin()
     vSatPos = vout.data[idxSatPos]
     vSatNeg = vout.data[idxSatNeg]
-    # Get start value by finding the first point where the signal crosses 90% 
+    # Get start value by finding the first point where the signal crosses 90%
     # of the negative saturation voltage
     idxStartSR = 0
-    idxEndSR = 0  
+    idxEndSR = 0
     for i, v in enumerate(vout.data):
         if v >= vSatNeg * 0.9:
             idxStartSR = i
@@ -113,7 +114,22 @@ def GetSlewRateAndSaturation(symbol) -> tuple[float, float, float]:
     delta_v = vout.data[idxEndSR] - vout.data[idxStartSR]
     delta_t = time.data[idxEndSR] - time.data[idxStartSR]
     slew_rate = (delta_v / delta_t) * 1e-06
-    return slew_rate, vSatPos, vSatNeg
+    return abs(slew_rate), abs(float(vSatPos)), abs(float(vSatNeg))
+
+
+def GetClosedLoopGain(symbol, ad) -> float:
+    rr = RunLtSpiceSimulation("Sims/7_GanhoFechada.asc", symbol)[0]
+    asc = AscEditor("Sims/0_Ad.asc")
+    R2 = asc.get_component_floatvalue("R2")
+    R3 = asc.get_component_floatvalue("R3")
+    vout = rr.get_trace("v(OUT)")
+    freq = rr.get_trace("frequency")
+    idx = abs(freq.data - 1000).argmin()
+    acmmf = vout.data[idx]
+
+    cmmr = (2*(1+ad*R2)*acmmf)/(2*R3+R2*acmmf)
+
+    return abs(cmmr)
 
 
 def GetResults(symbol):
@@ -125,23 +141,21 @@ def GetResults(symbol):
     psrrNeg = GetPsrrNeg(symbol)
     outputResClosed, outputResOpen = GetOutputRes(symbol, ad, beta)
     slewRate, vSatPos, vSatNeg = GetSlewRateAndSaturation(symbol)
+    cmmr = GetClosedLoopGain(symbol, ad)
 
-    print(f"    Ganho em malha aberta = {EngNumber(ad)}V/V")
-    print(f"    Tensão de Offset = {EngNumber(offset)}V")
-    print(f"    Taxa de distorção harmônica em 1kHz = {thd:.4f}%")
+    print(f"    CMRR = {EngNumber(cmmr)}V/V")
     print(f"    PSRR (Positivo) = {EngNumber(psrrPos)}dB")
     print(f"    PSRR (Negativo) = {EngNumber(psrrNeg)}dB")
-    print(
-        f"    Resistência entrada dif. malha fechada = {EngNumber(diffInputResClosed)}Ω")
-    print(
-        f"    Resistência entrada dif. malha aberta = {EngNumber(diffInputResOpen)}Ω")
-    print(
-        f"    Resistência de saída malha fechada = {EngNumber(outputResClosed)}Ω")
-    print(
-        f"    Resistência de saída malha aberta = {EngNumber(outputResOpen)}Ω")
-    print(f"    Slew Rate = {slewRate}V/μs")
-    print(f"    Tensão de Saturação (Positiva) = {vSatPos}V")
-    print(f"    Tensão de Saturação (Negativa) = {vSatNeg}V")
+    print(f"    Ganho em malha aberta = {EngNumber(ad)}V/V")
+    print(f"    Tensão de Saturação (Positiva) = {EngNumber(vSatPos)}V")
+    print(f"    Tensão de Saturação (Negativa) = {EngNumber(vSatNeg)}V")
+    print(f"    Tensão de Offset = {EngNumber(offset)}V")
+    print(f"    Slew Rate = {EngNumber(slewRate)}V/μs")
+    print(f"    Taxa de distorção harmônica em 1kHz = {thd:.4f}%")
+    print(f"    Res. entrada malha fechada = {EngNumber(diffInputResClosed)}Ω")
+    print(f"    Res. entrada malha aberta = {EngNumber(diffInputResOpen)}Ω")
+    print(f"    Res. saída malha fechada = {EngNumber(outputResClosed)}Ω")
+    print(f"    Res. saída malha aberta = {EngNumber(outputResOpen)}Ω")
     print("")
 
 
