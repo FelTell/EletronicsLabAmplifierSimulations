@@ -19,22 +19,36 @@ def RunLtSpiceSimulation(ascPath, symbol) -> tuple[RawRead, str]:
     return RawRead(rawFile), logFile
 
 
-def GetAdAndDiffInputRes(symbol) -> tuple[float, float, float, float]:
+def GetAdAndDiffInputRes(symbol) -> tuple[float, float, float, float, float]:
     rr = RunLtSpiceSimulation("Sims/0_Ad.asc", symbol)[0]
     asc = AscEditor("Sims/0_Ad.asc")
     vout = rr.get_trace("v(OUT)")
     vinNeg = rr.get_trace("v(In-)")
     vinPos = rr.get_trace("v(In+)")
+    vData =  abs(vout.data / (vinNeg.data - vinPos.data))
     iin = rr.get_trace("Ix(x1:in-)")
     freq = rr.get_trace("frequency")
     idx = abs(freq.data - 1000).argmin()
     R2 = asc.get_component_floatvalue("R2")
     R3 = asc.get_component_floatvalue("R3")
+
     beta = R2 / (R2 + R3)
-    gain = vout.data[idx] / (vinNeg.data[idx] - vinPos.data[idx])
+    gain = vData[idx]
     diffInputResClosed = vinNeg.data[idx] / iin.data[idx]
     diffInputResOpen = diffInputResClosed / (1 + gain * beta)
-    return abs(gain), abs(diffInputResClosed), abs(diffInputResOpen), beta
+
+    idxMaxVout = numpy.argmax(vData)
+    maxVout = vData[idxMaxVout]
+    voutdb = 20 * numpy.log10(maxVout) - 3
+    voutBw = 10 ** (voutdb / 20)
+    idx3db = 0
+    for i in range(idxMaxVout, len(vData)):
+        if vData[i] <= voutBw:
+            idx3db = i
+            break
+    bwOpen = freq.data[idx3db]
+
+    return abs(gain), abs(diffInputResClosed), abs(diffInputResOpen), beta, abs(bwOpen)
 
 
 def GetOffsetAndThd(symbol) -> tuple[float, float]:
@@ -108,16 +122,16 @@ def GetSlewRateAndSaturation(symbol) -> tuple[float, float, float]:
     # Get end value by finding the last point before the signal crosses 90%
     # of the positive saturation voltage
     for i, v in enumerate(vout.data):
-        idxEndSR = i
         if v >= vSatPos * 0.9:
+            idxEndSR = i
             break
-    delta_v = vout.data[idxEndSR] - vout.data[idxStartSR]
-    delta_t = time.data[idxEndSR] - time.data[idxStartSR]
-    slew_rate = (delta_v / delta_t) * 1e-06
-    return abs(slew_rate), abs(float(vSatPos)), abs(float(vSatNeg))
+    deltaV = vout.data[idxEndSR] - vout.data[idxStartSR]
+    deltaT = time.data[idxEndSR] - time.data[idxStartSR]
+    slewRate = (deltaV / deltaT) * 1e-06
+    return abs(slewRate), abs(float(vSatPos)), abs(float(vSatNeg))
 
 
-def GetClosedLoopGain(symbol, ad) -> float:
+def GetClosedLoopGain(symbol, ad) -> tuple[float, float]:
     rr = RunLtSpiceSimulation("Sims/7_GanhoFechada.asc", symbol)[0]
     asc = AscEditor("Sims/0_Ad.asc")
     R2 = asc.get_component_floatvalue("R2")
@@ -129,24 +143,38 @@ def GetClosedLoopGain(symbol, ad) -> float:
 
     cmmr = (2*(1+ad*R2)*acmmf)/(2*R3+R2*acmmf)
 
-    return abs(cmmr)
+    idxMaxVout = numpy.argmax(abs(vout.data))
+    maxVout = abs(vout.data[idxMaxVout])
+    voutdb = 20 * numpy.log10(maxVout) - 3
+    voutBw = 10 ** (voutdb / 20)
+    idx3db = 0
+    for i in range(idxMaxVout, len(vout.data)):
+        if abs(vout.data[i]) <= voutBw:
+            idx3db = i
+            break
+    bwClosed = freq.data[idx3db]
+
+    return abs(cmmr), abs(bwClosed)
 
 
 def GetResults(symbol):
     print(f"Running simulation for symbol: {symbol}")
-    ad, diffInputResClosed, diffInputResOpen, beta = GetAdAndDiffInputRes(
+    ad, diffInputResClosed, diffInputResOpen, beta, bwOpen = GetAdAndDiffInputRes(
         symbol)
     offset, thd = GetOffsetAndThd(symbol)
     psrrPos = GetPsrrPos(symbol)
     psrrNeg = GetPsrrNeg(symbol)
     outputResClosed, outputResOpen = GetOutputRes(symbol, ad, beta)
     slewRate, vSatPos, vSatNeg = GetSlewRateAndSaturation(symbol)
-    cmmr = GetClosedLoopGain(symbol, ad)
+    cmmr, bwClosed = GetClosedLoopGain(symbol, ad)
 
     print(f"    CMRR = {EngNumber(cmmr)}V/V")
     print(f"    PSRR (Positivo) = {EngNumber(psrrPos)}dB")
     print(f"    PSRR (Negativo) = {EngNumber(psrrNeg)}dB")
     print(f"    Ganho em malha aberta = {EngNumber(ad)}V/V")
+    print(f"    Banda passante em malha aberta = {EngNumber(bwOpen)}Hz")
+    print(f"    Banda passante em malha fechada = {EngNumber(bwClosed)}Hz")
+    print(f"    Res. entrada malha fechada = {EngNumber(diffInputResClosed)}Ω")
     print(f"    Tensão de Saturação (Positiva) = {EngNumber(vSatPos)}V")
     print(f"    Tensão de Saturação (Negativa) = {EngNumber(vSatNeg)}V")
     print(f"    Tensão de Offset = {EngNumber(offset)}V")
