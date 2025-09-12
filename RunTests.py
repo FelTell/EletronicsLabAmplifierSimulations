@@ -146,7 +146,6 @@ def GetClosedLoopGain(symbol, ad) -> float:
     R2 = asc.get_component_floatvalue("R2")
     R3 = asc.get_component_floatvalue("R3")
     vout = rr.get_trace("v(OUT)")
-    vinNeg = rr.get_trace("v(In-)")
     freq = rr.get_trace("frequency")
     idx = abs(freq.data - 1000).argmin()
     acmmf = vout.data[idx]
