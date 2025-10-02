@@ -186,8 +186,11 @@ def GetResults(symbol):
     print("")
 
 
-GetResults("A_AmpBasico")
-GetResults("B_CargaAtiva")
-GetResults("C_Fonte1")
-GetResults("D_Fonte2")
-GetResults("E_Fonte2Darlington")
+# GetResults("A_AmpBasico")
+# GetResults("B_CargaAtiva")
+# GetResults("C_Fonte1")
+# GetResults("D_Fonte2")
+# GetResults("E_Fonte2Darlington")
+# GetResults("F_FonteCorrenteAmp")
+# GetResults("G_CC-CE")
+GetResults("Z_Final")
