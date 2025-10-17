@@ -19,7 +19,8 @@ def RunLtSpiceSimulation(ascPath, symbol) -> tuple[RawRead, str]:
     return RawRead(rawFile), logFile
 
 
-def GetAdAndDiffInputRes(symbol) -> tuple[float, float, float, float, float, float]:
+def GetAdAndDiffInputRes(
+        symbol) -> tuple[float, float, float, float, float, float]:
     rr = RunLtSpiceSimulation("Sims/0_Ad.asc", symbol)[0]
     asc = AscEditor("Sims/0_Ad.asc")
     vout = rr.get_trace("v(OUT)")
@@ -57,7 +58,8 @@ def GetAdAndDiffInputRes(symbol) -> tuple[float, float, float, float, float, flo
             break
     bwClosed = freq.data[idx3dbClosed]
 
-    return abs(gainOpen), abs(diffInputResClosed), abs(diffInputResOpen), beta, abs(bwOpen), abs(bwClosed)
+    return abs(gainOpen), abs(diffInputResClosed), abs(
+        diffInputResOpen), beta, abs(bwOpen), abs(bwClosed)
 
 
 def GetOffsetAndThd(symbol) -> tuple[float, float]:
@@ -150,7 +152,7 @@ def GetClosedLoopGain(symbol, ad) -> float:
     idx = abs(freq.data - 1000).argmin()
     acmmf = vout.data[idx]
 
-    cmmr_linear = (2*(1+ad*R2)*acmmf)/(2*R3+R2*acmmf)
+    cmmr_linear = (2 * (1 + ad * R2) * acmmf) / (2 * R3 + R2 * acmmf)
     cmmr_db = 20 * numpy.log10(cmmr_linear)
 
     return abs(cmmr_db)
@@ -186,11 +188,21 @@ def GetResults(symbol):
     print("")
 
 
-# GetResults("A_AmpBasico")
-# GetResults("B_CargaAtiva")
-# GetResults("C_Fonte1")
-# GetResults("D_Fonte2")
-# GetResults("E_Fonte2Darlington")
-# GetResults("F_FonteCorrenteAmp")
+GetResults("A_AmpBasico")
+GetResults("B_CargaAtiva")
+GetResults("C_Fonte1")
+GetResults("D_Fonte2")
+GetResults("E_Fonte2Darlington")
+GetResults("F_FonteCorrenteAmp")
 # GetResults("G_CC-CE")
+# GetResults("H_Cascode")
+# GetResults("I_FonteComum")
+GetResults("J_SeguidorEmissor")
+GetResults("K_ParComplementar")
+GetResults("L_Tripple")
+
 GetResults("Z_Final")
+
+
+# banda passante 4hz -> 210khz
+# Tsat = 7.4v
